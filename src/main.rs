@@ -29,7 +29,10 @@ fn list(exprs: Vec<Expr>) -> Expr {
 fn head(expr: &Expr) -> Expr {
     match expr {
         Expr::Sym(_) => sym("Sym"),
-        Expr::List(list) => list[0].clone(),
+        Expr::List(list) => {
+            // println!("expr: {:?}", expr);
+            list[0].clone()
+        }
     }
 }
 
@@ -63,7 +66,7 @@ fn build_match_from_candidate(
     expr: &Expr,
     pat: &Vec<Pattern>,
     candidate: &Vec<&usize>,
-) -> Vec<(Pattern, Expr)> {
+) -> Vec<(Pattern, Vec<Expr>)> {
     match expr {
         Expr::List(list) => {
             let mut result = vec![];
@@ -71,7 +74,7 @@ fn build_match_from_candidate(
 
             for (pattern, &length) in pat.iter().zip(candidate.iter()) {
                 let end = start + length;
-                result.push((pattern.clone(), Expr::List(list[start..end].to_vec())));
+                result.push((pattern.clone(), list[start..end].to_vec()));
                 start = end;
             }
 
@@ -81,25 +84,50 @@ fn build_match_from_candidate(
     }
 }
 
-fn has_consistent_mappings(matches: &Vec<(Pattern, Expr)>) -> bool {
-    let mut mappings: HashMap<String, Expr> = HashMap::new();
+// fn has_consistent_mappings(matches: &Vec<(Pattern, Expr)>) -> bool {
+fn has_consistent_mappings(matches: &Vec<(Pattern, Vec<Expr>)>) -> bool {
+    let mut mappings: HashMap<String, Vec<Expr>> = HashMap::new();
     for (pattern, subseq) in matches.iter() {
         match pattern {
             Pattern::Literal(name, val) => {
                 // a literal should only go to a single expr, despite being a List
-                assert!(subseq.length() == 0);
-                match subseq {
-                    Expr::Sym(_) => panic!(),
-                    Expr::List(ls) => {
-                        if val != &ls[0] {
-                            return false;
-                        }
-                    },
+                assert!(subseq.len() == 1);
+                if val != &subseq[0] {
+                    return false;
+                }
+                // match subseq {
+                //     Expr::Sym(_) => panic!(),
+                //     Expr::List(ls) => {
+                //     }
+                // }
+            }
+            Pattern::Sequence(name, p_head) => {
+                if let Some(existing_subseq) = mappings.get(name) {
+                    if existing_subseq != subseq {
+                        return false;
+                    }
+                } else {
+                    mappings.insert(name.clone(), subseq.clone());
                 }
             }
-            Pattern::Sequence(name, head)
-            | Pattern::NullSequence(name, head)
-            | Pattern::Blank(name, head) => {
+            Pattern::NullSequence(name, p_head) => {
+                if let Some(existing_subseq) = mappings.get(name) {
+                    if existing_subseq != subseq {
+                        return false;
+                    }
+                } else {
+                    mappings.insert(name.clone(), subseq.clone());
+                }
+            }
+            Pattern::Blank(name, p_head) => {
+                if let Some(h) = p_head {
+                    assert!(subseq.len() == 1);
+                    let s_head = head(&subseq[0]);
+                    println!("s_head {:?}", s_head);
+                    if s_head != *h {
+                        return false;
+                    }
+                }
                 if let Some(existing_subseq) = mappings.get(name) {
                     if existing_subseq != subseq {
                         return false;
@@ -127,24 +155,27 @@ fn main() {
         sym("f"),
         list(vec![sym("a"), sym("b")]),
         list(vec![sym("a"), sym("b")]),
-        sym("c")
+        sym("c"),
     ]);
     let pattern = vec![
-        Literal("f1".to_string(), sym("g")),
-        NullSequence("xs".to_string(), None),
-        NullSequence("xs".to_string(), None),
-        Blank("x".to_string(), None),
+        Literal("f1".to_string(), sym("f")),
+        NullSequence("xs".to_string(), Some(sym("a"))),
+        NullSequence("xs".to_string(), Some(sym("a"))),
+        Blank("x".to_string(), Some(sym("Sym"))),
     ];
     let lists = possible_lengths(&expr, &pattern);
     println!("{lists:?}");
+    // println!("head  {:?}", head(&sym("c")));
 
     let candidates = lists
         .iter()
         .multi_cartesian_product()
         .filter(|x| x.iter().map(|&&val| val).sum::<usize>() == expr.length() + 1);
+    // println!("{candidates:?}");
 
     let filtered_candidates = candidates.clone().filter(|combination| {
         let matches = build_match_from_candidate(&expr, &pattern, combination);
+        // println!("{:?}", matches.iter().enumerate().collect::<Vec<_>>());
         has_consistent_mappings(&matches)
     });
     // let ans =  filtered_candidates.next();
