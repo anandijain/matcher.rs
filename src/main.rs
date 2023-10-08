@@ -90,18 +90,20 @@ fn has_consistent_mappings(matches: &Vec<(Pattern, Vec<Expr>)>) -> bool {
     for (pattern, subseq) in matches.iter() {
         match pattern {
             Pattern::Literal(name, val) => {
-                // a literal should only go to a single expr, despite being a List
                 assert!(subseq.len() == 1);
                 if val != &subseq[0] {
                     return false;
                 }
-                // match subseq {
-                //     Expr::Sym(_) => panic!(),
-                //     Expr::List(ls) => {
-                //     }
-                // }
             }
             Pattern::Sequence(name, p_head) => {
+                if let Some(h) = p_head {
+                    for s in subseq {
+                        let s_head = head(s);
+                        if s_head != *h {
+                            return false;
+                        }
+                    }
+                }
                 if let Some(existing_subseq) = mappings.get(name) {
                     if existing_subseq != subseq {
                         return false;
@@ -111,6 +113,14 @@ fn has_consistent_mappings(matches: &Vec<(Pattern, Vec<Expr>)>) -> bool {
                 }
             }
             Pattern::NullSequence(name, p_head) => {
+                if let Some(h) = p_head {
+                    for s in subseq {
+                        let s_head = head(s);
+                        if s_head != *h {
+                            return false;
+                        }
+                    }
+                }
                 if let Some(existing_subseq) = mappings.get(name) {
                     if existing_subseq != subseq {
                         return false;
@@ -155,13 +165,13 @@ fn main() {
         sym("f"),
         list(vec![sym("a"), sym("b")]),
         list(vec![sym("a"), sym("b")]),
-        sym("c"),
+        list(vec![sym("c"), sym("d")]),
     ]);
     let pattern = vec![
         Literal("f1".to_string(), sym("f")),
         NullSequence("xs".to_string(), Some(sym("a"))),
         NullSequence("xs".to_string(), Some(sym("a"))),
-        Blank("x".to_string(), Some(sym("Sym"))),
+        Blank("x".to_string(), Some(sym("c"))),
     ];
     let lists = possible_lengths(&expr, &pattern);
     println!("{lists:?}");
