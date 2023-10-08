@@ -1,95 +1,105 @@
-use std::collections::{BTreeMap, HashMap, VecDeque};
+use std::collections::HashMap;
+extern crate itertools;
 
-#[derive(Debug, PartialEq, Eq, Hash, Clone)]
+use itertools::Itertools;
+
+// in this program chars are syms
+use Pattern::*;
+#[derive(Clone, Debug)]
 enum Pattern {
-    L(char),   // Literal
-    S(String), // Sequence
-    N(String), // Null Sequence
-    P(String), // Placeholder
+    Literal(String, char), // name, expr
+    Sequence(String),
+    NullSequence(String),
+    Blank(String),
 }
 
-#[derive(Debug, Clone, Default)]
-struct Binding {
-    bindings: BTreeMap<String, VecDeque<char>>,
-}
-
-fn is_match(
-    expr: &[char],
-    pattern: &[Pattern],
-    cache: &mut HashMap<(usize, usize), Option<Binding>>,
-) -> Option<Binding> {
-    if let Some(ref cached) = cache.get(&(expr.len(), pattern.len())) {
-        return cached.clone().clone();
-    }
-
-    if pattern.is_empty() {
-        return if expr.is_empty() {
-            Some(Binding::default())
-        } else {
-            None
+fn possible_lengths2(expr: &Vec<char>, pat: &Vec<Pattern>) -> Vec<Vec<usize>> {
+    let mut lens = vec![];
+    for (i, p) in pat.iter().enumerate() {
+        let possible = match p {
+            Pattern::Blank(_) | Pattern::Literal(_, _) => 1..=1,
+            Pattern::Sequence(_) => 1..=expr.len(),
+            Pattern::NullSequence(_) => 0..=expr.len(),
         };
+        lens.push(possible.collect::<Vec<_>>())
+    }
+    lens
+}
+fn build_match_from_candidate(
+    expr: &Vec<char>,
+    pat: &Vec<Pattern>,
+    candidate: &Vec<&usize>,
+) -> Vec<(Pattern, Vec<char>)> {
+    let mut result = vec![];
+    let mut start = 0;
+
+    for (pattern, &length) in pat.iter().zip(candidate.iter()) {
+        let end = start + length;
+        result.push((pattern.clone(), expr[start..end].to_vec()));
+        start = end;
     }
 
-    let mut result = None;
-
-    match &pattern[0] {
-        Pattern::L(literal) if !expr.is_empty() && expr[0] == *literal => {
-            result = is_match(&expr[1..], &pattern[1..], cache);
-        }
-        Pattern::P(placeholder) | Pattern::S(placeholder) | Pattern::N(placeholder)
-            if !expr.is_empty() =>
-        {
-            let indices: Vec<usize> = match &pattern[0] {
-                Pattern::P(_) => (1..2).collect(),
-                Pattern::S(_) => (1..=expr.len()).collect(),
-                Pattern::N(_) => (0..=expr.len()).collect(),
-                _ => unreachable!(),
-            };
-
-            for i in indices {
-                if let Some(existing_binding) = result
-                    .as_ref()
-                    .and_then(|res| res.bindings.get(placeholder))
-                {
-                    let matched_seq: Vec<char> = expr[0..i].to_vec();
-                    let existing_seq: Vec<char> = existing_binding.iter().cloned().collect();
-                    if matched_seq != existing_seq {
-                        continue;
-                    }
-                }
-
-                if let Some(mut sub_result) = is_match(&expr[i..], &pattern[1..], cache) {
-                    for ch in &expr[0..i] {
-                        sub_result
-                            .bindings
-                            .entry(placeholder.clone())
-                            .or_insert_with(VecDeque::new)
-                            .push_front(*ch);
-                    }
-                    result = Some(sub_result);
-                    break;
-                }
-            }
-        }
-        _ => {}
-    }
-
-    cache.insert((expr.len(), pattern.len()), result.clone());
     result
 }
 
+fn has_consistent_mappings(matches: &Vec<(Pattern, Vec<char>)>) -> bool {
+    let mut mappings: HashMap<String, &Vec<char>> = HashMap::new();
+    for (pattern, subseq) in matches.iter() {
+        match pattern {
+            Pattern::Literal(name, _)
+            | Pattern::Sequence(name)
+            | Pattern::NullSequence(name)
+            | Pattern::Blank(name) => {
+                if let Some(existing_subseq) = mappings.get(name) {
+                    if existing_subseq != &subseq {
+                        return false;
+                    }
+                } else {
+                    mappings.insert(name.clone(), subseq);
+                }
+            }
+        }
+    }
+    true
+}
+
 fn main() {
-    let expression = vec!['a', 'b', 'a', 'b', 'c', 'd', 'e'];
+    // let expr = vec!['f', 'a', 'b', 'c', 'd', 'e'];
+    // let pattern = vec![
+    //     NullSequence("foo".to_string()),
+    //     Literal("f1".to_string(), 'f'),
+    //     Sequence("xs".to_string()),
+    //     Sequence("ys".to_string()),
+    //     Blank("x".to_string()),
+    //     NullSequence("zs".to_string()),
+    // ];
+    let expr = vec!['f', 'a', 'b', 'a', 'b'];
     let pattern = vec![
-        Pattern::S("xs".to_string()),
-        Pattern::S("xs".to_string()),
-        Pattern::N("ys".to_string()),
-        Pattern::P("x".to_string()),
+        Literal("f1".to_string(), 'g'),
+        NullSequence("xs".to_string()),
+        NullSequence("xs".to_string()),
+        NullSequence("zs".to_string()),
+        Blank("x".to_string())
     ];
+    let lists = possible_lengths2(&expr, &pattern);
+    println!("{lists:?}");
 
-    let mut cache = HashMap::new();
+    let candidates = lists
+        .iter()
+        .multi_cartesian_product()
+        .filter(|x| x.iter().map(|&&val| val).sum::<usize>() == expr.len());
 
-    let match_result = is_match(&expression, &pattern, &mut cache);
-    println!("cache: {:#?}", cache);
-    println!("Match: {:?}", match_result);
+    let filtered_candidates = candidates.clone().filter(|combination| {
+        let matches = build_match_from_candidate(&expr, &pattern, combination);
+        has_consistent_mappings(&matches)
+    });
+    // let ans =  filtered_candidates.next();
+    // pretty sure its always the first candidate
+    for combination in filtered_candidates.sorted() {
+        println!("{:?}", combination);
+        println!(
+            "{:?}",
+            build_match_from_candidate(&expr, &pattern, &combination)
+        );
+    }
 }
