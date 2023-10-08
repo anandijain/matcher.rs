@@ -22,6 +22,10 @@ fn sym(name: &str) -> Expr {
     Expr::Sym(name.to_string())
 }
 
+fn list(exprs: Vec<Expr>) -> Expr {
+    Expr::List(exprs)
+}
+
 fn head(expr: &Expr) -> Expr {
     match expr {
         Expr::Sym(_) => sym("Sym"),
@@ -81,7 +85,18 @@ fn has_consistent_mappings(matches: &Vec<(Pattern, Expr)>) -> bool {
     let mut mappings: HashMap<String, Expr> = HashMap::new();
     for (pattern, subseq) in matches.iter() {
         match pattern {
-            Pattern::Literal(name, val) => {}
+            Pattern::Literal(name, val) => {
+                // a literal should only go to a single expr, despite being a List
+                assert!(subseq.length() == 0);
+                match subseq {
+                    Expr::Sym(_) => panic!(),
+                    Expr::List(ls) => {
+                        if val != &ls[0] {
+                            return false;
+                        }
+                    },
+                }
+            }
             Pattern::Sequence(name, head)
             | Pattern::NullSequence(name, head)
             | Pattern::Blank(name, head) => {
@@ -108,12 +123,16 @@ fn main() {
     //     Blank("x".to_string()),
     //     NullSequence("zs".to_string()),
     // ];
-    let expr = Expr::List(vec![sym("f"), sym("a"), sym("b"), sym("a"), sym("b")]);
+    let expr = Expr::List(vec![
+        sym("f"),
+        list(vec![sym("a"), sym("b")]),
+        list(vec![sym("a"), sym("b")]),
+        sym("c")
+    ]);
     let pattern = vec![
         Literal("f1".to_string(), sym("g")),
         NullSequence("xs".to_string(), None),
         NullSequence("xs".to_string(), None),
-        NullSequence("zs".to_string(), None),
         Blank("x".to_string(), None),
     ];
     let lists = possible_lengths(&expr, &pattern);
