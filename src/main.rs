@@ -37,6 +37,7 @@ fn head(expr: &Expr) -> Expr {
 }
 
 impl Expr {
+    /// matches `Length` in WL
     pub fn length(&self) -> usize {
         match self {
             Expr::Sym(_) => 0,
@@ -84,7 +85,6 @@ fn build_match_from_candidate(
     }
 }
 
-// fn has_consistent_mappings(matches: &Vec<(Pattern, Expr)>) -> bool {
 fn has_consistent_mappings(matches: &Vec<(Pattern, Vec<Expr>)>) -> bool {
     let mut mappings: HashMap<String, Vec<Expr>> = HashMap::new();
     for (pattern, subseq) in matches.iter() {
@@ -93,40 +93,6 @@ fn has_consistent_mappings(matches: &Vec<(Pattern, Vec<Expr>)>) -> bool {
                 assert!(subseq.len() == 1);
                 if val != &subseq[0] {
                     return false;
-                }
-            }
-            Pattern::Sequence(name, p_head) => {
-                if let Some(h) = p_head {
-                    for s in subseq {
-                        let s_head = head(s);
-                        if s_head != *h {
-                            return false;
-                        }
-                    }
-                }
-                if let Some(existing_subseq) = mappings.get(name) {
-                    if existing_subseq != subseq {
-                        return false;
-                    }
-                } else {
-                    mappings.insert(name.clone(), subseq.clone());
-                }
-            }
-            Pattern::NullSequence(name, p_head) => {
-                if let Some(h) = p_head {
-                    for s in subseq {
-                        let s_head = head(s);
-                        if s_head != *h {
-                            return false;
-                        }
-                    }
-                }
-                if let Some(existing_subseq) = mappings.get(name) {
-                    if existing_subseq != subseq {
-                        return false;
-                    }
-                } else {
-                    mappings.insert(name.clone(), subseq.clone());
                 }
             }
             Pattern::Blank(name, p_head) => {
@@ -146,20 +112,37 @@ fn has_consistent_mappings(matches: &Vec<(Pattern, Vec<Expr>)>) -> bool {
                     mappings.insert(name.clone(), subseq.clone());
                 }
             }
+            Pattern::Sequence(name, p_head) | Pattern::NullSequence(name, p_head) => {
+                if let Some(h) = p_head {
+                    for s in subseq {
+                        let s_head = head(s);
+                        if s_head != *h {
+                            return false;
+                        }
+                    }
+                }
+                if let Some(existing_subseq) = mappings.get(name) {
+                    if existing_subseq != subseq {
+                        return false;
+                    }
+                } else {
+                    mappings.insert(name.clone(), subseq.clone());
+                }
+            }
         }
     }
     true
 }
 
 fn main() {
-    // let expr = vec!['f', 'a', 'b', 'c', 'd', 'e'];
+    // let expr = list(vec![sym("f"), sym("a"), sym("b"), sym("c"), sym("d"), sym("e")]);
     // let pattern = vec![
-    //     NullSequence("foo".to_string()),
-    //     Literal("f1".to_string(), 'f'),
-    //     Sequence("xs".to_string()),
-    //     Sequence("ys".to_string()),
-    //     Blank("x".to_string()),
-    //     NullSequence("zs".to_string()),
+    //     NullSequence("foo".to_string(), None),
+    //     Literal("f1".to_string(), sym("f")),
+    //     Sequence("xs".to_string(), None),
+    //     Sequence("ys".to_string(), None),
+    //     Blank("x".to_string(), None),
+    //     NullSequence("zs".to_string(), None),
     // ];
     let expr = Expr::List(vec![
         sym("f"),
